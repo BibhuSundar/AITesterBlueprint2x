@@ -662,24 +662,11 @@ venv/bin/python main.py VWO-48
 
 ---
 
-## 📖 Chapter 16: DeepEval + Local Repo Q&A (work in progress)
+## 📖 Chapter 16: DeepEval — Quality Metrics for LLM Pipelines (work in progress)
 
 **Directory:** `Chapter_16_DeepEval/`
 
-Working chapter for two intersecting workflows:
-
-1. **DeepEval** — LLM evaluation framework. `deepeval==4.0.6` installed in the chapter venv for measuring quality of pipeline outputs (test plans, test cases, generated code).
-2. **Local Repo Q&A bot** — runs entirely offline using Ollama (`qwen2.5-coder:14b` for generation, `nomic-embed-text` for embeddings). Indexes the [Advance-Playwright-Framework](https://github.com/PramodDutta/Advance-Playwright-Framework) repo and answers questions against it.
-
-> The Q&A bot is **RAG** (retrieval-augmented generation) — embed the repo, retrieve top-k chunks at query time, stuff into prompt. The model weights are not modified. Real fine-tuning (LoRA via MLX/Unsloth) is a separate path.
-
-### Files (current)
-
-| File | Purpose |
-| :--- | :--- |
-| `SKILL.md` | Tiered-model-orchestration skill — orchestrator on Opus/Fable, subagents on Sonnet/Haiku |
-| `Fine_TUNE_Instructions.md` | Step-by-step setup guide for the local Q&A bot (Ollama + index + ask) |
-| `SETUP_GUIDE_FINE_TUNE_QWEN2.5.md.pdf` | Same guide as a PDF |
+Uses the [DeepEval](https://github.com/confident-ai/deepeval) framework to **measure** the quality of outputs produced by the Chapter 14 / 15 CrewAI pipelines — test plans, test cases, generated Playwright code. Metrics: faithfulness, answer relevancy, hallucination, contextual precision/recall, and custom G-Eval rubrics for QA artefacts.
 
 ### Setup
 
@@ -689,7 +676,48 @@ python3 -m venv venv && source venv/bin/activate
 pip install deepeval requests
 ```
 
-For the Q&A bot follow [`Fine_TUNE_Instructions.md`](Chapter_16_DeepEval/Fine_TUNE_Instructions.md) — install Ollama, pull the two models, then run `index_repo.py` once and `ask.py` per question.
+### Files
+
+| File | Purpose |
+| :--- | :--- |
+| `SKILL.md` | Tiered-model-orchestration skill (orchestrator on Opus/Fable, subagents on Sonnet/Haiku) — used to keep evaluation runs cheap |
+
+> Fine-tuning content moved to [Chapter 17](#-chapter-17-fine-tuning-open-source-models-on-your-own-data) so this chapter stays focused on evaluation.
+
+---
+
+## 📖 Chapter 17: Fine-Tuning Open-Source Models on Your Own Data
+
+**Directory:** `Chapter_17_Fine_Tuning/`
+
+Take a free, open-source LLM (Qwen2.5-Coder, Llama 3, Mistral, Phi, ...) and adapt it to your own knowledge — a **code repository**, a **Jira project**, a stack of **PDFs**, internal wikis, chat transcripts, anything. Bot then answers in your voice against your facts, fully on your machine.
+
+### What you can fine-tune against
+
+| Source | Example use |
+| :--- | :--- |
+| **Code repo** | "How does `LoginModule` call `LoginPage`?" |
+| **Jira project** | "List unresolved P0 bugs in Reports module from sprint 25.S38." |
+| **PDF library** | "What does our security playbook say about API token rotation?" |
+| **Confluence / wiki** | "What is our standard test plan template?" |
+| **Slack / chat logs** | "What did the team decide about the discount-code bug?" |
+| **Test case CSVs** | "Show regression tests owned by `aditya.rao` in the Editor module." |
+| **Training videos** (Whisper transcripts) | "When in the onboarding video do they show staging credentials?" |
+| **OpenAPI / Postman** | "Generate a Playwright API test for `POST /booking` with full assertions." |
+
+### RAG vs LoRA
+
+| Approach | Weights changed? | Compute | When |
+| :--- | :--- | :--- | :--- |
+| **RAG** | No | CPU | Facts that change often; start here |
+| **LoRA / QLoRA** | Yes (small adapter) | GPU / Apple Silicon (MLX) | Bake in tone / domain jargon |
+| **Full fine-tune** | Yes (all weights) | Multi-GPU cluster | Almost never the right choice |
+
+### Stack
+
+Ollama (`qwen2.5-coder:14b` + `nomic-embed-text`) → LanceDB / Chroma vector store → Python glue (`index_repo.py`, `ask.py`). Optional LoRA via MLX-LM (Mac) or Unsloth (CUDA). Everything offline.
+
+See [`Chapter_17_Fine_Tuning/README.md`](Chapter_17_Fine_Tuning/README.md) and [`Fine_TUNE_Instructions.md`](Chapter_17_Fine_Tuning/Fine_TUNE_Instructions.md) for the full Qwen2.5-Coder + Ollama recipe.
 
 ---
 
