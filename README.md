@@ -785,4 +785,105 @@ DeepEval requires the `test_` filename prefix; that's why Exercise 1 was renamed
 
 ---
 
+## 📖 Chapter 19: DeepEval Framework — Evaluating a Real Chatbot + RAG System
+
+**Directory:** `Chapter_19_DeepEval_Framework/`
+
+A full, end-to-end evaluation harness built around two **real, runnable apps under test** and a switchable LLM-as-judge framework. Where Chapter 18 evaluates single prompts, Chapter 19 evaluates **live production-shaped systems** — a customer-support chatbot and a complete RAG pipeline — using DeepEval metrics for relevancy, faithfulness, grounding, hallucination, bias, and toxicity.
+
+Three subsystems:
+
+```mermaid
+flowchart LR
+    A["Subsystem A<br/>ShopSphere Chatbot<br/>React + FastAPI + Groq"]
+    B["Subsystem B<br/>RAG Explorer<br/>Ollama embed + Chroma + Groq"]
+    C["Subsystem C<br/>DeepEval Framework<br/>switchable judge LLM"]
+
+    C -->|HTTP| A
+    C -->|HTTP| B
+    C --> R["Pass/Fail + Score + Reason<br/>reports/report.html"]
+
+    style A fill:#fef3c7,stroke:#92400e
+    style B fill:#e3f2fd,stroke:#1565c0
+    style C fill:#e8f5e9,stroke:#2e7d32
+    style R fill:#ede7f6,stroke:#4527a0,stroke-width:2px
+```
+
+### Subsystem A — `01_Chatbot/` ShopSphere E-commerce Chatbot
+
+React (Vite) frontend + FastAPI backend + Groq LLM (`llama-3.3-70b-versatile`). The "app under test."
+
+| Service | Port |
+|---------|------|
+| FastAPI backend | 8201 |
+| Vite dev server | 5173 |
+
+```bash
+# Terminal 1 — backend
+cd 01_Chatbot/shopeasy_chatbot/01_chatbot/backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+export GROQ_API_KEY=gsk_...
+uvicorn app:app --reload --port 8201
+
+# Terminal 2 — frontend
+cd 01_Chatbot/shopeasy_chatbot/01_chatbot/frontend
+npm install && npm run dev
+```
+
+Open <http://localhost:5173>. Without `GROQ_API_KEY` it falls back to mock mode. API: `GET /health`, `POST /chat`.
+
+### Subsystem B — `02_RAG_Explorer/` RAG Explorer
+
+A complete, locally-runnable RAG pipeline that **exposes every stage** — raw chunks, embeddings model, retrieved hits with scores, and the grounded answer — so retrieval, faithfulness, and grounding can be audited.
+
+```
+ingest → chunk → embed (nomic-embed-text via Ollama) → store (ChromaDB) → retrieve → answer (Groq)
+```
+
+Port `8202`. Prerequisites: Ollama with `nomic-embed-text` pulled, and `GROQ_API_KEY` for live answers (mock mode works without it).
+
+```bash
+cd 02_RAG_Explorer/02_rag_explorer
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+ollama pull nomic-embed-text
+export GROQ_API_KEY=gsk_...
+uvicorn app:app --reload --port 8202
+```
+
+Open <http://localhost:8202>. Pages: `/` dashboard, `/ingest` (seed bundled corpus + upload PDF/MD/TXT), `/search` (pure retrieval with ranked hits), `/chat` (full RAG with the retrieval panel exposed). Bundled corpus: 5 e-commerce knowledge files (refund, shipping, return policies, product catalog, FAQ).
+
+### Subsystem C — `03_DeepFramework/` DeepEval Framework
+
+The evaluation harness that points DeepEval metrics at the two live apps. **Switchable judge LLM** via `JUDGE_PROVIDER` — the same `CompatibleJudge` class works for all three because OpenAI, Groq, and Ollama expose an OpenAI-compatible endpoint (`instructor` handles structured output uniformly):
+
+- `openai` → `OPENAI_API_KEY`, `gpt-4o-mini` (override `JUDGE_MODEL_OPENAI`)
+- `groq` → `GROQ_API_KEY`, `openai/gpt-oss-120b` (override `JUDGE_MODEL_GROQ`)
+- `ollama` → local Ollama at `http://localhost:11434/v1`, `gpt-oss:20b` (override `JUDGE_MODEL_OLLAMA`)
+
+```bash
+cd 03_DeepFramework
+pip install -r requirements.txt
+export JUDGE_PROVIDER=groq
+export GROQ_API_KEY=gsk_...
+# Subsystems A and B must be running first
+python run_all.py
+open reports/report.html
+```
+
+| Scoring direction | Metrics |
+|-------------------|---------|
+| Higher is better (threshold = floor) | answer relevancy, faithfulness, contextual precision/recall/relevancy, summarization, G-Evals, conversation relevancy |
+| Lower is better (threshold = ceiling) | hallucination, bias, toxicity |
+
+> Subsystem C is scaffolded (judge factory + provider abstraction + smoke test). The per-metric test files (`tests/test_NN_*.py`), golden datasets, and `run_all.py` runner are being filled in.
+
+### Notes
+
+- Each `.env` is gitignored — never commit real keys. Set `GROQ_API_KEY` / `OPENAI_API_KEY` / `CONFIDENT_API_KEY` per subsystem.
+- The chatbot and RAG apps were verified live: chatbot answers shipping/returns questions via Groq; RAG seeds 21 chunks from 5 docs and returns grounded, source-cited answers.
+
+---
+
 *Continue following this repository for future chapters exploring deeper AI integrations!*
