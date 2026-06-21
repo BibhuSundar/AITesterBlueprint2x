@@ -1,9 +1,10 @@
 """Metric #1: AnswerRelevancyMetric — does the reply stay on-topic for the question?
 
-Uses deepeval's ``assert_test`` so ``deepeval test run`` captures each golden as
-a separate test case and (when logged in) pushes the results to the Confident AI
-dashboard. The judge LLM and the chatbot target come from conftest fixtures, so
-the .env / JUDGE_PROVIDER selection and the golden dataset are all honoured.
+Parametrized so each golden becomes its own test case. Run with ``deepeval test run``
+to capture every case and (when CONFIDENT_API_KEY is set) push the results to the
+Confident AI cloud dashboard. The judge LLM and the chatbot target come from the
+conftest fixtures, so the .env / JUDGE_PROVIDER selection and the golden dataset are
+all honoured.
 """
 import pytest
 from deepeval import assert_test

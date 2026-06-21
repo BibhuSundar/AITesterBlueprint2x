@@ -34,19 +34,28 @@ class CompatibleJudge(DeepEvalBaseLLM):
     def load_model(self) -> Any:
         return self._patched
 
+    def _sampling_kwargs(self) -> dict:
+        # Reasoning models (gpt-5*, o1/o3/o4*) reject a custom temperature — they
+        # only allow the default (1). Every other model gets deterministic temp=0.
+        name = self._model.lower().rsplit("/", 1)[-1]
+        if name.startswith(("gpt-5", "o1", "o3", "o4")):
+            return {}
+        return {"temperature": 0}
+
     def generate(self, prompt: str, schema: Any | None = None) -> Any:
+        sampling = self._sampling_kwargs()
         if schema is not None:
             return self._patched.chat.completions.create(
                 model=self._model,
                 response_model=schema,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0,
                 max_retries=2,
+                **sampling,
             )
         completion = self._raw.chat.completions.create(
             model=self._model,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0,
+            **sampling,
         )
         return completion.choices[0].message.content
 

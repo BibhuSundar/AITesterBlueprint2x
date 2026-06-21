@@ -61,3 +61,32 @@ def judge_info() -> dict:
         "provider": _resolve_provider(),
         "model": judge.get_model_name(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Pinned judge for the live aleepup-browserbash-chatbot suite.
+#
+# That suite must ALWAYS grade with OpenAI gpt-5-mini, regardless of the
+# repo-wide JUDGE_PROVIDER in .env, so its live-bot scores stay comparable
+# run-to-run. CompatibleJudge already special-cases the gpt-5* family (those
+# models reject a custom temperature).
+# ---------------------------------------------------------------------------
+
+OPENAI_JUDGE_DEFAULT = "gpt-5-mini"
+
+
+def get_openai_judge(model: str | None = None) -> CompatibleJudge:
+    """Build an OpenAI judge pinned to a specific model (default gpt-5-mini)."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY is missing — the aleepup-browserbash-chatbot suite "
+            "judges with OpenAI gpt-5-mini. Add OPENAI_API_KEY to the .env."
+        )
+    resolved = model or os.getenv("BROWSERBASH_JUDGE_MODEL", OPENAI_JUDGE_DEFAULT)
+    return CompatibleJudge(
+        model=resolved,
+        api_key=api_key,
+        base_url=None,          # OpenAI default endpoint
+        provider_label="openai",
+    )

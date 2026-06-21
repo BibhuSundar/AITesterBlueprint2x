@@ -3,19 +3,23 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime
 from typing import Any
 
 from deepeval.test_case import ConversationalTestCase, LLMTestCase
 
-from datasets.chatbot_goldens import CHATBOT_GOLDENS, SAFETY_PROMPTS
-from datasets.rag_goldens import RAG_GOLDENS
+from datasets.aleepup_browserbash_goldens import PII_PROBES as BB_PII_PROBES
+from datasets.aleepup_browserbash_goldens import SAFETY_PROMPTS as BB_SAFETY_PROMPTS
+from datasets.chatbot_goldens import SAFETY_PROMPTS
 from llm_providers import get_judge
-from targets import ChatbotClient, RagClient
+from targets import BrowserBashClient, ChatbotClient, RagClient
 
+from . import goldens_store, runs_store
 from .registry import MetricDef, REGISTRY_BY_ID
 
 _chatbot = ChatbotClient()
 _rag = RagClient()
+_browserbash = BrowserBashClient()
 
 
 PII_PROBES = [
@@ -46,16 +50,13 @@ def _list_or_text(x):
 
 
 def _golden(target: str, idx: int):
-    if target == "chatbot":
-        cases = CHATBOT_GOLDENS
-    else:
-        cases = RAG_GOLDENS
+    cases = goldens_store.as_objects(target)
     return cases[idx % len(cases)]
 
 
 def _eligible_golden_indices(md: MetricDef) -> list[int]:
     """Return golden indices that have the fields the metric needs."""
-    cases = CHATBOT_GOLDENS if md.target == "chatbot" else RAG_GOLDENS
+    cases = goldens_store.as_objects(md.target)
     out: list[int] = []
     for i, g in enumerate(cases):
         # RagGolden has no `.context` field — only ChatbotGolden does. Use getattr
@@ -70,9 +71,20 @@ def _eligible_golden_indices(md: MetricDef) -> list[int]:
     return out or list(range(len(cases)))
 
 
+def _safety_prompts(target: str) -> list[str]:
+    return BB_SAFETY_PROMPTS if target == "browserbash" else SAFETY_PROMPTS
+
+
+def _pii_probes(target: str) -> list[str]:
+    return BB_PII_PROBES if target == "browserbash" else PII_PROBES
+
+
 def _call_target(target: str, message: str) -> dict:
     if target == "chatbot":
         r = _chatbot.chat(message)
+        return {"answer": r.reply, "retrieval_context": [], "sources": [], "model": r.model, "mode": r.mode}
+    if target == "browserbash":
+        r = _browserbash.chat(message)
         return {"answer": r.reply, "retrieval_context": [], "sources": [], "model": r.model, "mode": r.mode}
     res = _rag.chat(message)
     return {
@@ -119,13 +131,15 @@ def run_metric(metric_id: str, sample_idx: int = 0) -> dict[str, Any]:
 
     try:
         if md.sample_kind == "safety":
-            prompt = SAFETY_PROMPTS[sample_idx % len(SAFETY_PROMPTS)]
+            prompts = _safety_prompts(md.target)
+            prompt = prompts[sample_idx % len(prompts)]
             tgt = _call_target(md.target, prompt)
             tc = LLMTestCase(input=prompt, actual_output=tgt["answer"])
             extra = {"target_response": tgt}
 
         elif md.sample_kind == "pii_probe":
-            prompt = PII_PROBES[sample_idx % len(PII_PROBES)]
+            probes = _pii_probes(md.target)
+            prompt = probes[sample_idx % len(probes)]
             tgt = _call_target(md.target, prompt)
             tc = LLMTestCase(input=prompt, actual_output=tgt["answer"])
             extra = {"target_response": tgt}
@@ -166,10 +180,10 @@ def run_metric(metric_id: str, sample_idx: int = 0) -> dict[str, Any]:
             if "expected_output" in md.requires:
                 tc_kwargs["expected_output"] = golden.expected_output
             if "context" in md.requires:
-                ctx = golden.context if md.target == "chatbot" else _list_or_text(golden.expected_output)
+                ctx = golden.context if md.target in ("chatbot", "browserbash") else _list_or_text(golden.expected_output)
                 tc_kwargs["context"] = ctx
             if "retrieval_context" in md.requires:
-                if md.target == "chatbot":
+                if md.target in ("chatbot", "browserbash"):
                     tc_kwargs["retrieval_context"] = golden.context or [golden.expected_output]
                 else:
                     tc_kwargs["retrieval_context"] = tgt["retrieval_context"] or [golden.expected_output]
@@ -203,7 +217,8 @@ def _result(md: MetricDef, metric, judge, started: float,
         passed = bool(metric.is_successful())
     except Exception:
         passed = (score >= md.threshold) if md.higher_is_better else (score <= md.threshold)
-    return {
+    judge_name = judge.get_model_name()
+    res = {
         "metric_id": md.id,
         "ok": True,
         "passed": passed,
@@ -214,8 +229,29 @@ def _result(md: MetricDef, metric, judge, started: float,
         "input": input_,
         "actual_output": actual_output,
         "elapsed_ms": elapsed_ms,
-        "judge": judge.get_model_name(),
+        "judge": judge_name,
         "category": md.category,
         "target": md.target,
         "extra": extra,
     }
+    # capture the run locally so the "Runs & Logs" tab can show it (date/time basis)
+    try:
+        runs_store.record({
+            "run_id": "dashboard-" + datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "source": "dashboard",
+            "target": md.target,
+            "metric_id": md.id,
+            "metric": md.name,
+            "category": md.category,
+            "score": res["score"],
+            "threshold": md.threshold,
+            "higher_is_better": md.higher_is_better,
+            "passed": passed,
+            "reason": reason,
+            "input": input_,
+            "actual_output": actual_output,
+            "judge": judge_name,
+        })
+    except Exception:
+        pass
+    return res

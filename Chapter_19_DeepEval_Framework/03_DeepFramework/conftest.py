@@ -69,3 +69,35 @@ def pytest_report_header(config):
         return f"judge provider={info['provider']} model={info['model']}"
     except Exception as e:  # pragma: no cover
         return f"judge: not configured ({e})"
+
+
+# -------------------- run-history capture --------------------
+# Mirror every pytest / `deepeval test run` session into the dashboard's local
+# run store, so the "Runs & Logs" tab shows CLI runs too (date/time basis) — no
+# Confident AI round-trip needed.
+
+_CACHE_SNAPSHOT: set[str] = set()
+
+
+def pytest_sessionstart(session):
+    try:
+        from dashboard import runs_store
+        global _CACHE_SNAPSHOT
+        _CACHE_SNAPSHOT = runs_store.cache_keys()
+    except Exception:
+        pass
+
+
+def pytest_sessionfinish(session, exitstatus):
+    try:
+        from datetime import datetime
+
+        from dashboard import runs_store
+        run_id = "pytest-" + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        judge = os.getenv("JUDGE_MODEL_OPENAI") or os.getenv("JUDGE_PROVIDER") or ""
+        recs = runs_store.cache_records(
+            run_id, source="pytest", judge=judge, keys_to_skip=_CACHE_SNAPSHOT,
+        )
+        runs_store.record_many(recs)
+    except Exception:
+        pass
