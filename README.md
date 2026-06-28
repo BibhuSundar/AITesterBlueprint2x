@@ -961,6 +961,32 @@ python src/03_Flakyness_AI_Agent.py
 
 > **LangChain v1 note:** `create_tool_calling_agent` + `AgentExecutor` are gone from `langchain.agents` (they moved to `langchain_classic`). v1's native API is **`create_agent`**, which handles the scratchpad / tool-loop internally and is invoked with `{"messages": [...]}`. Providers are pluggable: `ChatGroq` for Groq, or `ChatOpenAI(base_url="https://openrouter.ai/api/v1")` for OpenRouter.
 
+### Capstone — JIRA bug-triage agent (with RAG)
+
+The levels build up to a real **bug-triage agent**: give it JIRA ticket keys, it fetches each ticket, triages it into a structured verdict, and (in the production version) grounds that verdict in a knowledge base of past bugs and test cases.
+
+| File | What |
+|------|------|
+| `src/bug_traige_agent.py` | `fetch_jira_ticket` tool (JIRA REST v3 + ADF→text) → structured `Triage` (title / severity / priority / component / team / likely-duplicate / reasoning). Handles one key or many (`PROJ-1, PROJ-2`). |
+| `src/bug_traige_agent_prod_ready.py` | Same, **RAG-grounded** — retrieves the top-3 most-similar past bugs / test cases / tickets and triages *in light of that precedent*. |
+| `src/app.py` | **Streamlit UI** — sidebar writes JIRA + Groq creds to `.env`, then triages each key and streams result cards. |
+| `rag/` | Local Chroma KB (embeddings = Ollama `nomic-embed-text`, free). Ingests `data/test_cases.csv`, `data/bug_reports/*.md`, any `data/*.pdf`, and **all live JIRA issues via JQL**. |
+| `data/generate_dummy_data.py` | Deterministic sample data — 100 test cases + 10 past-triaged bug reports (triage precedent). |
+
+```bash
+# 1) sample data + knowledge base
+python data/generate_dummy_data.py
+python -m rag.ingest                     # needs Ollama + `ollama pull nomic-embed-text`
+
+# 2) CLI triage  (.env: GROQ_API_KEY, LLM_MODEL, JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN)
+python src/bug_traige_agent_prod_ready.py    # enter: PROJ-101, PROJ-102
+
+# 3) or the Streamlit app
+streamlit run src/app.py
+```
+
+> **Structured-output gotcha (Groq):** `with_structured_output(Triage)` defaults to function-calling, where the model can emit `"False"` (a string) for a boolean field and Groq's server-side validator rejects it (`400 tool_use_failed`). Fix: `method="json_schema"`, which constrains generation to the schema so booleans come back as real booleans — but it requires a json-schema-capable Groq model (e.g. `openai/gpt-oss-120b`; `llama-3.1-8b-instant` does **not** support it).
+
 ---
 
 *Continue following this repository for future chapters exploring deeper AI integrations!*
