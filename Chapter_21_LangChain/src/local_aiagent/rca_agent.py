@@ -47,18 +47,19 @@ agent = create_agent(
                    "likely root cause, the evidence for it, and one fix."),
 )
 
-result = agent.invoke({"messages": [{"role": "user", "content":
-    "The test 'checkout payment flow' just started failing. Find the root cause."
-}]})
+if __name__ == "__main__":
+    result = agent.invoke({"messages": [{"role": "user", "content":
+        "The test 'checkout payment flow' just started failing. Find the root cause."
+    }]})
 
-# show the tool calls the agent made, then its final answer
-for m in result["messages"]:
-    calls = getattr(m, "tool_calls", None)
-    if calls:
-        for c in calls:
-            print(f"[tool] {c['name']}({c['args']})")
-    elif m.type == "tool":
-        print(f"[result] {m.content}")
+    # show the tool calls the agent made, then its final answer
+    for m in result["messages"]:
+        calls = getattr(m, "tool_calls", None)
+        if calls:
+            for c in calls:
+                print(f"[tool] {c['name']}({c['args']})")
+        elif m.type == "tool":
+            print(f"[result] {m.content}")
 
-print("\n" + "=" * 70)
-print(result["messages"][-1].content)
+    print("\n" + "=" * 70)
+    print(result["messages"][-1].content)

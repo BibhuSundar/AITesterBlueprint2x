@@ -38,13 +38,15 @@ prompt = ChatPromptTemplate.from_messages([
 
 chain = prompt | designer
 
-plan = chain.invoke({"story": """
+
+if __name__ == "__main__":
+    plan = chain.invoke({"story": """
 As a user, I can reset my password via a 'Forgot password' link.
 A reset email is sent if the account exists; the link expires in
 30 minutes; the new password must meet the strength policy.
 """})
 
-print(f"Feature: {plan.feature}  ({len(plan.test_cases)} cases)")
-for tc in plan.test_cases:
-    print(f"  [{tc.priority}] {tc.id}  {tc.title}  ({tc.type})")
+    print(f"Feature: {plan.feature}  ({len(plan.test_cases)} cases)")
+    for tc in plan.test_cases:
+        print(f"  [{tc.priority}] {tc.id}  {tc.title}  ({tc.type})")
 
